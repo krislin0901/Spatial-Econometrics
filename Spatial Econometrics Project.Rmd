@@ -1,0 +1,132 @@
+---
+title: "Spatial Econometrics Problem Set R"
+author: "Lin Yu Chen"
+date: "8/7/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##### 1. Charge the data in R.
+```{r 1, message=FALSE, warning=FALSE}
+load("~/Desktop/Waseda/Sophomore Spring Semester/Spatial Econometrics/h.RData")
+library(RColorBrewer)
+library(latticeExtra)
+```
+
+
+##### 2. In the program, line 40 to line 43, you create the graphic to observe the distribution of the Value of house on the map. Create similar maps for: total population, number of White, African-american, Asian, and Hispanic, additionally do it for median family size and median household income. Analyze your results by comparing your maps.
+```{r 2, message=FALSE,warning=FALSE}
+#Total Population
+grps <- 10 
+bk1 <- quantile(h$Population, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p <- spplot(h, "Population", at=bk1, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent") 
+p + layer(sp.polygons(hh)) 
+
+#White
+bk2 <- quantile(h$White, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p2 <- spplot(h, "White", at=bk2, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+p2 + layer(sp.polygons(hh))
+
+#African-american
+bk3 <- quantile(h$Black, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p3 <- spplot(h, "Black", at=bk3, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+p3 + layer(sp.polygons(hh))
+
+#Asian
+bk4 <- quantile(h$Asian, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p4 <- spplot(h, "Asian", at=bk4, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+p4 + layer(sp.polygons(hh))
+
+#Hispanic
+bk5 <- quantile(h$Hispanic, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p5 <- spplot(h, "Hispanic", at=bk5, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+p5 + layer(sp.polygons(hh))
+
+#familysize
+bk6 <- quantile(h$familySize, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p6 <- spplot(h, "familySize", at=bk6, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+p6 + layer(sp.polygons(hh))
+
+#medHHinc
+bk7 <- quantile(h$medHHinc, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p7 <- spplot(h, "medHHinc", at=bk7, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+p7 + layer(sp.polygons(hh))
+```
+&nbsp;
+Based on the map, there seems to be a high clustering among people with the same race. As shown in the maps for White, Black, Asian, and Hispanic residents of California, areas with high population of a certain race are located next to each other. Looking at the maps closer, I also noticed that White population are widely distributed across each counties, especially compared to minorities in the state. Meanwhile, the Black residents in California are mostly located near the urban and coastal areas like Los Angeles and San Francisco. There also some Black residents remotely located from rural. Similar to African-Americans, most Asian residents are located near urban areas like Los Angeles and San Francisco. Suprisingly, unlike other minorities in the state, Hispanics are mostly located in the central part of the state with some noticeable presence in the southern region of the state. Areas with high Hispanic population seem to also have large family size since most areas with large family size are also located in the central part of the state. As for income level, residents with high median income are mostly located at Los Angeles and San Francisco and their surrounding counties. 
+
+##### 3. In line 54 you have the equation that might help us to estimate the value of house. Modify the equation by using your results or observations in previous question and estimate the model by OLS. Interpret your results.
+```{r 3, message=FALSE, warning=FALSE}
+#Create new variables
+hh$fAsian <- hh$Asian / hh$Population
+hh$fBlack <- hh$Black / hh$Population
+hh$age <- 2000 - hh$yearBuilt
+
+#Equation to be estimated
+f1 <- houseValue ~ age + nBedrooms + medHHinc + fAsian + fBlack 
+
+##OLS regression
+m1 <- lm(f1, data=hh)
+summary(m1)
+
+hh$residuals <- residuals(m1)
+bk8 <- quantile(hh$residuals, 0:(grps-1)/(grps-1), na.rm=TRUE)
+spplot(hh, "residuals", at=bk8, col.regions=rev(brewer.pal(grps, "RdBu")), col="black")
+
+library("spdep")
+nb <- poly2nb(hh)
+nb[[21]] <- sort(as.integer(c(nb[[21]], 38)))
+nb[[38]] <- sort(as.integer(c(21, nb[[38]])))
+nb
+par(mai=c(0,0,0,0))
+plot(hh)
+plot(nb, coordinates(hh), col='red', lwd=2, add=TRUE)
+
+#list of neighbors
+lw <- nb2listw(nb)
+
+#MORANS indicator
+moran.mc(hh$residuals, lw, 999)
+```
+Based on the regression table, high presence of African-American residents in an area can cause a negative impact to the price level of houses in the area, specifically lowering the value by -$476,914. This variable is also statistically significant and has the highest impact to the house price among all the variables included in the model. Surprisingly, the presence of Asian residents is not statistically significant to house price, but the explanatory variable still holds a considerable impact to the house level with a decrease in house price of -$184,970. Unlike the regression result shown during the lecture, the number of Bedrooms seem to have a negative effect to the house prices after controlling for Asian, African-American, and median income. Age of the property remains to be a statistically significant factor in the house price. Based on Moran's I, there seems to be no error caused by the presence of spatial autocorrelation since the p-value is greater than 0.05.
+
+
+##### 4. From line 83 you estimate the Spatial lag model by using your previous equation. Estimate your spatial model and compare with your results in the previous point.
+```{r 4, message=FALSE, warning=FALSE}
+m1s = lagsarlm(f1, data=hh, lw, tol.solve=1.0e-30)
+summary(m1s)
+
+hh$residuals <- residuals(m1s)
+moran.mc(hh$residuals, lw, 999)
+
+brks <- quantile(hh$residuals, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p <- spplot(hh, "residuals", at=brks, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
+print( p + layer(sp.polygons(hh)) )
+```
+
+Compared to the OLS Model, the Spatial Lag Model that controls for the spatial effect had a noticeable decrease in the impact of non-racial factors such as age, median income and number of bedrooms to the house price. However, the model exhibited an increase in racial factors, particularly in Asian and African-American population. In this model, Asian remains to be statistically insignificant at p-value < 0.05 in explaining the house price in California. There is also a statistically significant positive spatial effect (0.25) in the model based on Likelihood Ratio Test and Wald Statistic. Lastly, the Moran's I also suggest that the model has successfully controlled for the spatial effect since the p-value is greater than 0.05.
+
+##### 5. Estimate the model by using a Spatial error model. Compare your results.
+```{r 5, message=FALSE, warning=FALSE}
+m1e = errorsarlm(f1, data=hh, lw, tol.solve=1.0e-30)
+summary(m1e)
+hh$residuals_sem <- residuals(m1e)
+moran.mc(hh$residuals_sem, lw, 999)
+brks10 <- quantile(hh$residuals_sem, 0:(grps-1)/(grps-1), na.rm=TRUE)
+p9 <- spplot(hh, "residuals_sem", at=brks10, col.regions=rev(brewer.pal(grps, "RdBu")),
+            col="transparent")
+print( p9 + layer(sp.polygons(hh)) )
+```
+
+In this model, there is a noticeable decrease in the impact of age, Asian population, and African-American population to the house price after controlling for spatial effects in the error. The effects of number of bedrooms and median income slightly increased. Referring to the LR test and Wald statistic, the 0.34 spatial effect on errors is also statistically significant at < 0.5. The Moran's I also suggest that the model has successfully controlled for the spatial effect since the p-value is greater than 0.05. Comparing the SLM and SEC, the SLM also has a lower Akaike Information Criteria, therefore the SLM model better explains the datasets.  
+
+
+
+
+
+
